@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Max Ma 數位光影藝廊</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts & FontAwesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Three.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif;
+      background-color: #c8bcae;
+      user-select: none;
+      touch-action: none;
+    }
+
+    #webgl-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 1;
+      touch-action: none;
+    }
+
+    /* 頂部與底部 UI 層級，確保在 Canvas 之上 */
+    .ui-layer {
+      position: relative;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .pointer-auto {
+      pointer-events: auto;
+    }
+
+    /* 導覽 HUD 動畫與質感 */
+    .glass-hud {
+      background: rgba(28, 25, 23, 0.88);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    /* 手機端隱藏捲軸 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .station-btn {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .station-btn.active {
+      background: #f59e0b;
+      color: #18181b;
+      box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+      transform: translateY(-2px);
+    }
+
+    /* 自訂捲軸 */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="text-stone-100">
+
+  <!-- 3D WebGL Canvas 畫布 -->
+  <canvas id="webgl-canvas"></canvas>
+
+  <!-- 載入中動畫遮罩 -->
+  <div id="loading-overlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-stone-900 transition-opacity duration-700">
+    <div class="w-16 h-16 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin mb-4"></div>
+    <h2 class="text-xl font-medium tracking-widest text-amber-400">進入 Max Ma 數位光影藝廊...</h2>
+    <p class="text-stone-400 text-sm mt-2">加載 Max Ma 數位光影藝廊</p>
+  </div>
+
+  <!-- 頂部標題 Header -->
+  <header class="ui-layer fixed top-3 left-3 right-3 sm:top-4 sm:left-4 sm:right-4 flex items-center justify-between">
+    <div class="pointer-auto flex items-center gap-2 md:gap-3 bg-stone-900/80 backdrop-blur-md border border-stone-700 px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-full shadow-xl max-w-[50%] sm:max-w-none">
+      <div class="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-cyan-300 animate-pulse shrink-0"></div>
+      <h1 class="text-xs sm:text-base md:text-xl font-bold tracking-wider text-stone-100 truncate">Digital Gallery <span class="hidden sm:inline text-xs text-cyan-300 font-normal ml-2">5 Themes • Diamond Core</span></h1>
+    </div>
+
+    <!-- 右上角功能控制 -->
+    <div class="pointer-auto flex items-center gap-1.5 sm:gap-2">
+      <!-- 語言切換選單 (修復走位、重疊與高度對齊) -->
+      <div class="relative flex items-center">
+        <select id="language-select" class="appearance-none bg-stone-900/90 hover:bg-stone-800 text-stone-200 border border-stone-700/80 pl-3 pr-7 py-1.5 sm:pl-4 sm:pr-8 sm:py-2 rounded-full text-xs sm:text-sm font-medium shadow-xl transition focus:outline-none cursor-pointer h-9 sm:h-10 flex items-center">
+          <option value="en" selected>English</option>
+          <option value="zh-HK">繁體中文</option>
+          <option value="zh-CN">簡體中文</option>
+        </select>
+        <i class="fa-solid fa-chevron-down absolute right-2.5 sm:right-3 text-[10px] sm:text-xs text-stone-400 pointer-events-none"></i>
+      </div>
+
+      <!-- 燈光模式切換按鈕 -->
+      <button id="toggle-light-btn" class="bg-stone-900/90 hover:bg-stone-800 text-stone-200 border border-stone-700/80 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium shadow-xl transition flex items-center justify-center gap-2 h-9 sm:h-10 shrink-0" title="切換情調燈光">
+        <i class="fa-solid fa-lightbulb text-amber-400"></i>
+        <span class="hidden sm:inline" id="light-btn-text">Mood Glow</span>
+      </button>
+
+      <!-- 音效切換按鈕 -->
+      <button id="toggle-audio-btn" class="bg-stone-900/90 hover:bg-stone-800 text-stone-200 border border-stone-700/80 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs sm:text-sm font-medium shadow-xl transition flex items-center justify-center gap-2 h-9 sm:h-10 shrink-0" title="背景情調音樂">
+        <i class="fa-solid fa-volume-xmark text-stone-400" id="audio-icon"></i>
+        <span class="hidden sm:inline" id="audio-text">Audio: Off</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 底部 HUD 導覽系統 -->
+  <div class="ui-layer fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-4xl">
+    <nav class="glass-hud p-1.5 sm:p-2 rounded-2xl flex items-center justify-between shadow-2xl pointer-auto">
+      <div class="flex items-center gap-1 w-full overflow-x-auto no-scrollbar py-0.5">
+        <button data-station="0" class="station-btn active shrink-0 min-w-[70px] sm:min-w-0 sm:flex-1 py-1.5 sm:py-2.5 px-2.5 sm:px-4 rounded-xl text-[11px] sm:text-sm font-medium text-stone-300 hover:text-white hover:bg-stone-800/60 flex flex-col sm:flex-row items-center justify-center gap-1">
+          <i class="fa-solid fa-mountain text-xs sm:text-sm"></i>
+          <span id="nav-0" class="truncate">Mountains</span>
+        </button>
+
+        <button data-station="1" class="station-btn shrink-0 min-w-[70px] sm:min-w-0 sm:flex-1 py-1.5 sm:py-2.5 px-2.5 sm:px-4 rounded-xl text-[11px] sm:text-sm font-medium text-stone-300 hover:text-white hover:bg-stone-800/60 flex flex-col sm:flex-row items-center justify-center gap-1">
+          <i class="fa-solid fa-sun text-xs sm:text-sm"></i>
+          <span id="nav-1" class="truncate">Sunsets</span>
+        </button>
+
+        <button data-station="2" class="station-btn shrink-0 min-w-[70px] sm:min-w-0 sm:flex-1 py-1.5 sm:py-2.5 px-2.5 sm:px-4 rounded-xl text-[11px] sm:text-sm font-medium text-stone-300 hover:text-white hover:bg-stone-800/60 flex flex-col sm:flex-row items-center justify-center gap-1">
+          <i class="fa-solid fa-landmark text-xs sm:text-sm"></i>
+          <span id="nav-2" class="truncate">Culture</span>
+        </button>
+
+        <button data-station="3" class="station-btn shrink-0 min-w-[70px] sm:min-w-0 sm:flex-1 py-1.5 sm:py-2.5 px-2.5 sm:px-4 rounded-xl text-[11px] sm:text-sm font-medium text-stone-300 hover:text-white hover:bg-stone-800/60 flex flex-col sm:flex-row items-center justify-center gap-1">
+          <i class="fa-solid fa-tree text-xs sm:text-sm"></i>
+          <span id="nav-3" class="truncate">Forests</span>
+        </button>
+
+        <button data-station="4" class="station-btn shrink-0 min-w-[70px] sm:min-w-0 sm:flex-1 py-1.5 sm:py-2.5 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-medium text-stone-300 hover:text-white hover:bg-stone-800/60 flex flex-col sm:flex-row items-center justify-center gap-1">
+          <i class="fa-solid fa-water text-xs sm:text-sm"></i>
+          <span id="nav-4" class="truncate">Cascades</span>
+        </button>
+      </div>
+
+      <div class="h-6 w-[1px] bg-stone-700/80 mx-1 shrink-0"></div>
+
+      <button id="reset-cam-btn" class="p-2 sm:px-3 rounded-xl text-xs sm:text-sm text-stone-400 hover:text-amber-400 hover:bg-stone-800/80 transition-colors pointer-auto shrink-0" title="Focus Area">
+        <i class="fa-solid fa-crosshairs text-sm sm:text-base"></i>
+      </button>
+    </nav>
+  </div>
+
+  <!-- 展品詳細資訊視窗 Modal -->
+  <div id="artwork-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-300">
+    <div id="modal-card" class="bg-stone-900 border border-stone-700 w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl transition-transform duration-300 scale-95 flex flex-col md:flex-row">
+      
+      <!-- 相片大圖區 -->
+      <div class="w-full md:w-3/5 bg-stone-950 flex items-center justify-center p-4 min-h-[260px]">
+        <img id="modal-img" src="" alt="Artwork Detail" class="max-h-[60vh] object-contain rounded-lg border border-stone-800 shadow-xl">
+      </div>
+
+      <!-- 作品資訊區 -->
+      <div class="w-full md:w-2/5 p-6 flex flex-col justify-between border-t md:border-t-0 md:border-l border-stone-800 bg-stone-900/90">
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <span id="modal-theme" class="text-xs font-semibold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-md">主題區</span>
+            <button id="close-modal-btn" class="w-8 h-8 flex items-center justify-center rounded-full bg-stone-800 text-stone-400 hover:text-white hover:bg-stone-700 transition-colors">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+          <h3 id="modal-title" class="text-2xl font-bold text-stone-100 mb-3 font-sans">作品名稱</h3>
+          <p id="modal-desc" class="text-sm text-stone-300 leading-relaxed font-light">作品詳細介紹說明...</p>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-stone-800 flex items-center justify-between text-xs text-stone-400">
+          <span>展位: 啞光黑畫框作品</span>
+          <span class="text-amber-400/80"><i class="fa-solid fa-circle-info mr-1"></i> 3D 展廳現場展出</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // 全域 3D 與控制變數
+    let scene, camera, renderer;
+    let targetCameraPos = new THREE.Vector3();
+    let targetLookAt = new THREE.Vector3();
+    let currentLookAt = new THREE.Vector3();
+    let interactiveObjects = [];
+    let currentStationIndex = 0;
+    let currentLang = 'en'; // 預設英文
+
+    // 多語言文字庫 Dictionary
+    const i18n = {
+      en: {
+        headerTitle: 'Digital Light Gallery',
+        headerSub: 'Max Ma Collection',
+        loadingTitle: 'Entering 3D Gallery Space...',
+        loadingSub: 'Loading 3D hall & artworks',
+        lightMood: 'Mood Glow',
+        lightHighlight: 'Exhibition Light',
+        audioOff: 'Audio: Off',
+        audioOn: 'Audio: On',
+        modalStationTag: '3D Hall Exhibition',
+        modalThemeLabel: 'Theme Zone',
+        nav: ['Mountains', 'Sunsets', 'Culture', 'Forests', 'Cascades'],
+        gallery: [
+          {
+            themeTitle: 'Mountains & Lakes',
+            artworks: [
+              { title: "Distant Peaks", desc: "Morning light illuminates the vast, rugged mountains, while a row of withered trees in the foreground forms a serene winter silhouette." },
+              { title: "Volcanic Horizon", desc: "A solitary conical volcano rises above calm waters, crowned by a striking lenticular cloud against a soft, hazy sky." }
+            ]
+          },
+          {
+            themeTitle: 'Golden Hour & Sunsets',
+            artworks: [
+              { title: "Desert Nomad", desc: "Wrapped in a vibrant blue turban, a lone traveler walks along the crest of a golden dune into the vast, open desert." },
+              { title: "Golden Sunset", desc: "The setting sun casts a golden glow across the calm sea, framed by dramatic coastal headlands in silhouette." }
+            ]
+          },
+          {
+            themeTitle: 'Culture & Heritage',
+            artworks: [
+              { title: "Ancient Pillars", desc: "A majestic ancient stone column stands tall under a vivid blue sky, preserving the grandeur and history of a bygone civilization." },
+              { title: "Desert Caravan", desc: "Travelers on camels journey past dramatic sandstone cliffs and distant mountains in a sunlit desert canyon." }
+            ]
+          },
+          {
+            themeTitle: 'Forests & Nature',
+            artworks: [
+              { title: "River Hunters", desc: "Brown bears gather at a cascading waterfall, poised to catch salmon leaping through the rushing currents." },
+              { title: "Lonely Evergreen", desc: "A single green pine tree stands out dramatically amidst a sea of golden autumn foliage." }
+            ]
+          },
+          {
+            themeTitle: 'Waterfalls & Ice',
+            artworks: [
+              { title: "Polar Moonrise", desc: "The moon hovers directly above a snow-covered mountain peak, reflecting a tranquil and eerie glow across icy polar waters." },
+              { title: "Turquoise Pools", desc: "Tiered travertine pools filled with vibrant turquoise water sit nestled against a snowy woodland backdrop." }
+            ]
+          }
+        ]
+      },
+      'zh-HK': {
+        headerTitle: '數位光影藝廊',
+        headerSub: 'Max Ma Collection',
+        loadingTitle: '進入 3D 展覽館空間...',
+        loadingSub: '加載 3D 展廳與藝術品',
+        lightMood: '情調模式',
+        lightHighlight: '高亮模式',
+        audioOff: '背景音: 關',
+        audioOn: '背景音: 開',
+        modalStationTag: '3D 展廳現場展出',
+        modalThemeLabel: '主題區',
+        nav: ['群山', '夕陽', '文化', '森林', '飛瀑'],
+        gallery: [
+          {
+            themeTitle: '山巒與湖泊',
+            artworks: [
+              { title: "枯林遠山", desc: "晨光灑在蒼茫的山脈上，前景是整齊而枯寂的樹林剪影，展現出遼闊而寧靜的冬日荒野氣息。" },
+              { title: "海天一色", desc: "平靜的海面上矗立著孤傲的錐形火山，山頂覆蓋著奇特的莢狀雲，在柔和的天空映襯下顯得格外莊嚴。" }
+            ]
+          },
+          {
+            themeTitle: '金輝與晚霞',
+            artworks: [
+              { title: "獨行大漠", desc: "一位身穿傳統服飾、頭裹藍巾的旅人獨自走在金黃色的沙丘脊線上，遠眺無垠的地平線，流露出一份孤獨而壯麗的探索感。" },
+              { title: "夕陽醉海 ", desc: "溫暖的夕陽緩緩沉入海平面，金紅色的餘暉在波光粼粼的水面上拉出一道閃耀的光路，兩側剪影般的山岬更添詩意。" }
+            ]
+          },
+          {
+            themeTitle: '文化與古蹟',
+            artworks: [
+              { title: "古柱擎天", desc: "高聳的歷史石柱直插蔚藍蒼穹，斑駁的浮雕與身後的曠野遺跡交相輝映，見證著歲月流轉與古文明的宏偉。" },
+              { title: "漫步沙谷", desc: "幾位旅人騎著駱駝行經奇特的紅色沙岩與遠山，在溫潤的光影中勾勒出一幅經典的絲路探險風情畫。" }
+            ]
+          },
+          {
+            themeTitle: '森林與自然',
+            artworks: [
+              { title: "激流捕鮭", desc: "棕熊聚在急流瀑布旁專注地捕捉躍出水面的三文魚，水花四濺中捕捉到大自然最原始而生動的生態瞬間。" },
+              { title: "萬黃叢中", desc: "密密麻麻的金黃色秋葉森林中，獨有一棵蒼翠挺拔的常青針葉樹矗立其中，形成強烈的色彩對比與視覺焦點。" }
+            ]
+          },
+          {
+            themeTitle: '瀑布與冰川',
+            artworks: [
+              { title: "月照冰川", desc: "一輪明月剛好懸掛在潔白巨大的雪山山頂之上，冰冷的海面與浮冰倒映著微光，營造出極地特有的純淨與神祕。" },
+              { title: "仙境瑤池", desc: "層疊錯落的鈣化彩池蓄滿碧藍清澈的水體，周圍點綴著雪景與枯木，宛如大自然精心雕琢的人間仙境。" }
+            ]
+          }
+        ]
+      },
+      'zh-CN': {
+        headerTitle: '数位光影艺廊',
+        headerSub: 'Max Ma Collection',
+        loadingTitle: '进入 3D 展览馆空间...',
+        loadingSub: '加载 3D 展厅与艺术品',
+        lightMood: '情调模式',
+        lightHighlight: '高亮模式',
+        audioOff: '背景音: 关',
+        audioOn: '背景音: 开',
+        modalStationTag: '3D 展厅现场展出',
+        modalThemeLabel: '主题区',
+        nav: ['群山', '夕阳', '文化', '森林', '飞瀑'],
+        gallery: [
+          {
+            themeTitle: '山峦与湖泊',
+            artworks: [
+              { title: "枯林远山", desc: "晨光洒在苍茫的山脉上，前景是整齐而枯寂的树林剪影，展现出辽阔而宁静的冬日荒野气息。" },
+              { title: "海天一色", desc: "平静的海面上矗立着孤傲的锥形火山，山顶覆盖着奇特的荚状云，在柔和的天空映衬下显得格外庄严。" }
+            ]
+          },
+          {
+            themeTitle: '金辉与晚霞',
+            artworks: [
+              { title: "独行大漠", desc: "一位身穿传统服饰、头裹蓝巾的旅人独自走在金黄色的沙丘脊线上，远眺无垠的地平线，流露出一份孤独而壮丽的探索感。" },
+              { title: "夕陽醉海", desc: "溫暖的夕陽緩緩沉入海平面，金紅色的餘暉在波光粼粼的水面上拉出一道閃耀的光路，兩側剪影般的山岬更添詩意。" }
+            ]
+          },
+          {
+            themeTitle: '文化与古迹',
+            artworks: [
+              { title: "古柱擎天", desc: "高耸的历史石柱直插蔚蓝苍穹，斑驳的浮雕与身后的旷野遗迹交相辉映，见证着岁月流转与古文明的宏伟。" },
+              { title: "漫步沙谷", desc: "几位旅人骑着骆驼行经奇特的红色沙岩与远山，在温润的光影中勾勒出一幅经典的丝路探险风情画。" }
+            ]
+          },
+          {
+            themeTitle: '森林与自然',
+            artworks: [
+              { title: "激流捕鲑", desc: "棕熊聚在急流瀑布旁专注地捕捉跃出水面的三文鱼，水花四溅中捕捉到大自然最原始而生动的生态瞬间。" },
+              { title: "万黄丛中", desc: "密密麻麻的金黄色秋叶森林中，独有一棵苍翠挺拔的常青针叶树矗立其中，形成强烈色彩对比与视觉焦点。" }
+            ]
+          },
+          {
+            themeTitle: '瀑布与冰川',
+            artworks: [
+              { title: "月照冰川", desc: "一轮明月刚好悬挂在洁白巨大的雪山山顶之上，冰冷的海面与浮冰倒映着微光，营造出极地特有的纯净与神秘。" },
+              { title: "仙境瑶池", desc: "层叠错落的钙化彩池蓄满碧蓝清澈的水体，周围点缀着雪景与枯木，宛如大自然精心雕琢的人间仙境。" }
+            ]
+          }
+        ]
+      }
+    };
+
+    // 5 個展區基礎數據 (預設使用英文)
+    const galleryData = [
+      {
+        theme: "Mountains",
+        spotColor: 0xffeedd,
+        artworks: [
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Mountains-88.avif" },
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Mountains-9.avif" }
+        ]
+      },
+      {
+        theme: "Sunsets",
+        spotColor: 0xffeedd,
+        artworks: [
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Sunsets-10.avif" },
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Sunsets-5.avif" }
+        ]
+      },
+      {
+        theme: "Culture",
+        spotColor: 0xffeedd,
+        artworks: [
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Culture-20.avif" },
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Culture-4.avif" }
+        ]
+      },
+      {
+        theme: "Forests",
+        spotColor: 0xffeedd,
+        artworks: [
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Forests-27.avif" },
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Forests-38.avif" }
+        ]
+      },
+      {
+        theme: "Cascades",
+        spotColor: 0xffeedd,
+        artworks: [
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Cascades-2.avif" },
+          { url: "https://raw.githubusercontent.com/noreg714/test/refs/heads/main/images/Cascades-41.avif" }
+        ]
+      }
+    ];
+
+    let titleMeshes = [];
+    let plaqueMeshes = [];
+
+    // 滑鼠旋轉與縮放鏡頭變數
+    let isDragging = false;
+    let previousMousePosition = { x: 0, y: 0 };
+    let cameraAngle = 0; // 繞 Y 軸旋轉角度
+    let cameraHeight = 2.2;
+    let cameraDistance = 8.5;
+
+    const galleryRadius = 14;
+    const stationAngles = [0, 1.256, 2.513, 3.769, 5.026];
+
+    // 初始化 Three.js 展館場景
+    function initScene() {
+      const container = document.getElementById('webgl-canvas');
+      const aspect = window.innerWidth / window.innerHeight;
+      const isMobile = aspect < 1.0 || window.innerWidth < 768;
+
+      // 1. Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xc8bcae);
+      scene.fog = new THREE.FogExp2(0xc8bcae, 0.028);
+
+      // 2. Camera (手機直向視角適配 88 度大視野)
+      const initialFov = isMobile ? 88 : 55;
+      camera = new THREE.PerspectiveCamera(initialFov, aspect, 0.1, 100);
+      const initDist = isMobile ? galleryRadius - 2.8 : 8.5;
+      camera.position.set(0, 2.2, initDist);
+      currentLookAt.set(0, 2.2, 14);
+
+      // 3. Renderer
+      renderer = new THREE.WebGLRenderer({ canvas: container, antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+
+      // 4. 搭建建築與中心鑽石
+      buildArchitecture();
+
+      // 5. 搭建 5 大主題展區
+      buildStations();
+
+      // 6. 設定事件與互動
+      setupInteraction();
+
+      // 預設第 0 個 Station
+      goToStation(0);
+
+      // 關閉載入畫面
+      setTimeout(() => {
+        const loader = document.getElementById('loading-overlay');
+        if (loader) {
+          loader.classList.add('opacity-0');
+          setTimeout(() => loader.remove(), 700);
+        }
+      }, 600);
+
+      window.addEventListener('resize', onWindowResize);
+      animate();
+    }
+
+    // 建立藝廊建築主體
+    function buildArchitecture() {
+      // 圓形地板
+      const floorGeo = new THREE.CylinderGeometry(18, 18, 0.2, 64);
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: 0xb5a798,
+        roughness: 0.45,
+        metalness: 0.15
+      });
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.position.y = -0.1;
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      // 天花板
+      const ceilingGeo = new THREE.CylinderGeometry(18, 18, 0.2, 64);
+      const ceilingMat = new THREE.MeshStandardMaterial({
+        color: 0x9b8b7c,
+        roughness: 0.9
+      });
+      const ceiling = new THREE.Mesh(ceilingGeo, ceilingMat);
+      ceiling.position.y = 5.8;
+      scene.add(ceiling);
+
+      // 柔和天光
+      const ambientLight = new THREE.AmbientLight(0xfff5ea, 0.75);
+      ambientLight.name = "ambientLight";
+      scene.add(ambientLight);
+
+      // 中央高空主聚光燈
+      const centerLight = new THREE.PointLight(0xffffff, 2.5, 16);
+      centerLight.position.set(0, 4.8, 0);
+      centerLight.name = "centerLight";
+      scene.add(centerLight);
+
+      // 中央寶石基座
+      const baseGeo = new THREE.CylinderGeometry(1.4, 1.6, 0.8, 32);
+      const baseMat = new THREE.MeshStandardMaterial({
+        color: 0x27272a,
+        roughness: 0.3,
+        metalness: 0.85
+      });
+      const base = new THREE.Mesh(baseGeo, baseMat);
+      base.position.set(0, 0.4, 0);
+      base.castShadow = true;
+      base.receiveShadow = true;
+      scene.add(base);
+
+      // 中央透明鑽石
+      const crystalGeo = new THREE.IcosahedronGeometry(0.85, 0);
+      const crystalMat = new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        roughness: 0.05,
+        metalness: 0.05,
+        transmission: 0.92,
+        ior: 2.417,
+        transparent: true,
+        opacity: 0.95,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.1
+      });
+      const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+      crystal.position.set(0, 1.6, 0);
+      crystal.castShadow = true;
+      crystal.name = "centerCrystal";
+      scene.add(crystal);
+    }
+
+    // 建立 5 個展區
+    function buildStations() {
+      const textureLoader = new THREE.TextureLoader();
+
+      galleryData.forEach((data, index) => {
+        const angle = stationAngles[index];
+        const stationGroup = new THREE.Group();
+        const langData = i18n[currentLang].gallery[index];
+
+        // 主牆
+        const wallWidth = 7.5;
+        const wallHeight = 5.2;
+        const mainWallGeo = new THREE.BoxGeometry(wallWidth, wallHeight, 0.3);
+        const mainWallMat = new THREE.MeshStandardMaterial({
+          color: 0xbfaea0,
+          roughness: 0.8
+        });
+        const mainWall = new THREE.Mesh(mainWallGeo, mainWallMat);
+        mainWall.position.set(0, wallHeight / 2, 0);
+        mainWall.receiveShadow = true;
+        mainWall.castShadow = true;
+        stationGroup.add(mainWall);
+
+        // 側牆
+        const sideWallWidth = 2.4;
+        const sideWallGeo = new THREE.BoxGeometry(sideWallWidth, wallHeight, 0.25);
+        const sideWallMat = new THREE.MeshStandardMaterial({ color: 0xa19080, roughness: 0.85 });
+
+        const leftSideWall = new THREE.Mesh(sideWallGeo, sideWallMat);
+        leftSideWall.position.set(-wallWidth / 2 - 0.7, wallHeight / 2, 0.7);
+        leftSideWall.rotation.y = Math.PI / 6;
+        stationGroup.add(leftSideWall);
+
+        const rightSideWall = new THREE.Mesh(sideWallGeo, sideWallMat);
+        rightSideWall.position.set(wallWidth / 2 + 0.7, wallHeight / 2, 0.7);
+        rightSideWall.rotation.y = -Math.PI / 6;
+        stationGroup.add(rightSideWall);
+
+        // 聚光燈
+        const spotLight = new THREE.SpotLight(data.spotColor, 2.5);
+        spotLight.position.set(0, 6, 2.8);
+        spotLight.target = mainWall;
+        spotLight.angle = Math.PI / 3.2;
+        spotLight.penumbra = 0.45;
+        spotLight.castShadow = true;
+        stationGroup.add(spotLight);
+
+        // 展區主題標題版 Mesh
+        const titleGeo = new THREE.PlaneGeometry(2.4, 0.55);
+        const titleMat = new THREE.MeshBasicMaterial({ transparent: true });
+        const titleMesh = new THREE.Mesh(titleGeo, titleMat);
+        titleMesh.position.set(0, 4.3, 0.17);
+        stationGroup.add(titleMesh);
+        titleMeshes[index] = titleMesh;
+
+        // 放 2 張相片與畫框
+        const aspect = window.innerWidth / window.innerHeight;
+        const isMobile = aspect < 1.0 || window.innerWidth < 768;
+        const frameXPositions = isMobile ? [-1.0, 1.0] : [-1.9, 1.9];
+
+        plaqueMeshes[index] = [];
+
+        data.artworks.forEach((art, artIdx) => {
+          const frameWidth = isMobile ? 1.65 : 2.4;
+          const frameHeight = isMobile ? 1.25 : 1.7;
+
+          const artworkGroup = new THREE.Group();
+          artworkGroup.position.set(frameXPositions[artIdx], 2.4, 0.16);
+
+          // 啞光黑色畫框 (完全移除了頂部的 Title 標籤)
+          const frameBorderGeo = new THREE.BoxGeometry(frameWidth + (isMobile ? 0.1 : 0.16), frameHeight + (isMobile ? 0.1 : 0.16), 0.08);
+          const frameBorderMat = new THREE.MeshStandardMaterial({
+            color: 0x111113,
+            roughness: 0.35,
+            metalness: 0.2
+          });
+          const frameBorder = new THREE.Mesh(frameBorderGeo, frameBorderMat);
+          artworkGroup.add(frameBorder);
+
+          // 畫框內襯墊
+          const matBoardGeo = new THREE.PlaneGeometry(frameWidth + 0.02, frameHeight + 0.02);
+          const matBoardMat = new THREE.MeshBasicMaterial({ color: 0xeadecc });
+          const matBoard = new THREE.Mesh(matBoardGeo, matBoardMat);
+          matBoard.position.z = 0.042;
+          artworkGroup.add(matBoard);
+
+          // 圖片 Mesh
+          const pictureGeo = new THREE.PlaneGeometry(frameWidth - (isMobile ? 0.12 : 0.2), frameHeight - (isMobile ? 0.12 : 0.2));
+          const texture = textureLoader.load(art.url);
+          texture.encoding = THREE.sRGBEncoding;
+
+          const pictureMat = new THREE.MeshBasicMaterial({ map: texture });
+          const pictureMesh = new THREE.Mesh(pictureGeo, pictureMat);
+          pictureMesh.position.z = 0.045;
+          artworkGroup.add(pictureMesh);
+
+          pictureMesh.userData = {
+            stationId: index,
+            artId: artIdx,
+            theme: data.theme,
+            url: art.url
+          };
+          interactiveObjects.push(pictureMesh);
+
+          // 下方銘牌
+          const plaqueGeo = new THREE.PlaneGeometry(isMobile ? 0.9 : 1.3, isMobile ? 0.22 : 0.3);
+          const plaqueMat = new THREE.MeshBasicMaterial({ transparent: true, alphaTest: 0.1 });
+          const plaqueMesh = new THREE.Mesh(plaqueGeo, plaqueMat);
+          plaqueMesh.position.set(0, isMobile ? -0.85 : -1.15, 0.042);
+          artworkGroup.add(plaqueMesh);
+          plaqueMeshes[index][artIdx] = plaqueMesh;
+
+          stationGroup.add(artworkGroup);
+        });
+
+        stationGroup.position.x = Math.sin(angle) * galleryRadius;
+        stationGroup.position.z = Math.cos(angle) * galleryRadius;
+        stationGroup.rotation.y = angle + Math.PI;
+
+        scene.add(stationGroup);
+      });
+
+      // 初始化渲染所有 Canvas 貼圖文字
+      updateLanguageUI();
+    }
+
+    // 動態更新 3D Canvas 貼圖與 HTML UI 多語言
+    function updateLanguageUI() {
+      const t = i18n[currentLang];
+
+      // 1. 更新 HUD 與 HTML UI
+      document.querySelector('h1').innerHTML = `${t.headerTitle} <span class="hidden sm:inline text-xs text-cyan-300 font-normal ml-2">${t.headerSub}</span>`;
+      t.nav.forEach((name, i) => {
+        const el = document.getElementById(`nav-${i}`);
+        if (el) el.innerText = name;
+      });
+
+      // 2. 更新 3D 展區看板與銘牌 Canvas 貼圖
+      galleryData.forEach((data, index) => {
+        const langData = t.gallery[index];
+
+        // 展區主題看板貼圖
+        const titleCanvas = document.createElement('canvas');
+        titleCanvas.width = 512;
+        titleCanvas.height = 128;
+        const ctx = titleCanvas.getContext('2d');
+        ctx.fillStyle = "#bfaea0";
+        ctx.fillRect(0, 0, 512, 128);
+        ctx.fillStyle = "#18181b";
+        ctx.font = "Bold 36px 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(langData.themeTitle, 256, 75);
+
+        if (titleMeshes[index]) {
+          if (titleMeshes[index].material.map) titleMeshes[index].material.map.dispose();
+          titleMeshes[index].material.map = new THREE.CanvasTexture(titleCanvas);
+          titleMeshes[index].material.needsUpdate = true;
+        }
+
+        // 畫框下方銘牌貼圖 (背景設為透明，去除灰色底盒)
+        langData.artworks.forEach((art, artIdx) => {
+          const plaqueCanvas = document.createElement('canvas');
+          plaqueCanvas.width = 400;
+          plaqueCanvas.height = 80;
+          const pCtx = plaqueCanvas.getContext('2d');
+          
+          // 清空 Canvas 背景 (透明)
+          pCtx.clearRect(0, 0, 400, 80);
+          
+          pCtx.fillStyle = "#27272a";
+          pCtx.font = "600 24px 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif";
+          pCtx.textAlign = "center";
+          pCtx.textBaseline = "middle";
+          pCtx.fillText(art.title, 200, 40);
+
+          const pm = plaqueMeshes[index][artIdx];
+          if (pm) {
+            if (pm.material.map) pm.material.map.dispose();
+            pm.material.map = new THREE.CanvasTexture(plaqueCanvas);
+            pm.material.needsUpdate = true;
+          }
+        });
+      });
+    }
+
+    // 移動視角至指定 Station
+    function goToStation(index) {
+      currentStationIndex = index;
+
+      document.querySelectorAll('.station-btn').forEach((btn, i) => {
+        if (i === index) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+
+      const aspect = window.innerWidth / window.innerHeight;
+      const isMobile = aspect < 1.0 || window.innerWidth < 768;
+      const angle = stationAngles[index];
+      cameraAngle = angle;
+
+      cameraDistance = isMobile ? galleryRadius - 2.8 : galleryRadius - 5.5;
+      cameraHeight = isMobile ? 2.15 : 2.2;
+
+      updateCameraTarget();
+    }
+
+    function updateCameraTarget() {
+      const aspect = window.innerWidth / window.innerHeight;
+      const isMobile = aspect < 1.0 || window.innerWidth < 768;
+
+      targetCameraPos.x = Math.sin(cameraAngle) * cameraDistance;
+      targetCameraPos.z = Math.cos(cameraAngle) * cameraDistance;
+      targetCameraPos.y = cameraHeight;
+
+      targetLookAt.x = Math.sin(cameraAngle) * galleryRadius;
+      targetLookAt.z = Math.cos(cameraAngle) * galleryRadius;
+      targetLookAt.y = isMobile ? 2.35 : 2.6;
+    }
+
+    // 設定互動與右上角控制功能
+    function setupInteraction() {
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+
+      // 導覽按鈕切換 Station
+      document.querySelectorAll('.station-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.getAttribute('data-station'));
+          goToStation(idx);
+        });
+      });
+
+      document.getElementById('reset-cam-btn').addEventListener('click', () => {
+        goToStation(currentStationIndex);
+      });
+
+      // 語言切換事件
+      document.getElementById('language-select').addEventListener('change', (e) => {
+        currentLang = e.target.value;
+        updateLanguageUI();
+      });
+
+      // 燈光模式切換
+      let isMoodMode = true;
+      document.getElementById('toggle-light-btn').addEventListener('click', () => {
+        isMoodMode = !isMoodMode;
+        const amb = scene.getObjectByName("ambientLight");
+        const centerL = scene.getObjectByName("centerLight");
+        const btnText = document.getElementById('light-btn-text');
+
+        if (isMoodMode) {
+          amb.intensity = 0.75;
+          centerL.intensity = 2.5;
+          renderer.toneMappingExposure = 1.15;
+          btnText.innerText = i18n[currentLang].lightMood;
+        } else {
+          amb.intensity = 1.3;
+          centerL.intensity = 4.5;
+          renderer.toneMappingExposure = 1.35;
+          btnText.innerText = i18n[currentLang].lightHighlight;
+        }
+      });
+
+      // 背景音樂 (播放指定音效 MP3)
+      const bgAudio = new Audio('https://noreg714.github.io/test/audio/amb-river-and-birds.mp3');
+      bgAudio.loop = true;
+      let isAudioPlaying = false;
+
+      document.getElementById('toggle-audio-btn').addEventListener('click', () => {
+        const icon = document.getElementById('audio-icon');
+        const text = document.getElementById('audio-text');
+
+        if (!isAudioPlaying) {
+          bgAudio.play().then(() => {
+            isAudioPlaying = true;
+            icon.className = "fa-solid fa-volume-high text-amber-400 animate-pulse";
+            text.innerText = i18n[currentLang].audioOn;
+          }).catch(e => {
+            console.log("Audio play error:", e);
+          });
+        } else {
+          bgAudio.pause();
+          isAudioPlaying = false;
+          icon.className = "fa-solid fa-volume-xmark text-stone-400";
+          text.innerText = i18n[currentLang].audioOff;
+        }
+      });
+
+      // 滑鼠與觸控拖拽旋轉/俯仰視角
+      const canvas = document.getElementById('webgl-canvas');
+      let touchStartDist = 0;
+
+      // 滑鼠事件
+      canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        previousMousePosition = { x: e.clientX, y: e.clientY };
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const deltaX = e.clientX - previousMousePosition.x;
+        const deltaY = e.clientY - previousMousePosition.y;
+
+        cameraAngle -= deltaX * 0.004;
+        cameraHeight = Math.max(0.5, Math.min(4.5, cameraHeight + deltaY * 0.004));
+
+        updateCameraTarget();
+        previousMousePosition = { x: e.clientX, y: e.clientY };
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+
+      // 手機觸控事件 (單指平移，雙指 Pinch Zoom 縮放)
+      canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          isDragging = true;
+          previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        } else if (e.touches.length === 2) {
+          isDragging = false;
+          touchStartDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault(); // 防止瀏覽器原生縮放與滾動
+
+        if (e.touches.length === 1 && isDragging) {
+          const deltaX = e.touches[0].clientX - previousMousePosition.x;
+          const deltaY = e.touches[0].clientY - previousMousePosition.y;
+
+          cameraAngle -= deltaX * 0.005;
+          cameraHeight = Math.max(0.5, Math.min(4.5, cameraHeight + deltaY * 0.005));
+
+          updateCameraTarget();
+          previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        } else if (e.touches.length === 2) {
+          const currentDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          const deltaDist = currentDist - touchStartDist;
+
+          cameraDistance = Math.max(3.0, Math.min(16.0, cameraDistance - deltaDist * 0.02));
+          updateCameraTarget();
+
+          touchStartDist = currentDist;
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', () => {
+        isDragging = false;
+      });
+
+      // 滑鼠滾輪前後推拉縮放 (Zoom)
+      window.addEventListener('wheel', (e) => {
+        cameraDistance = Math.max(3.0, Math.min(16.0, cameraDistance + e.deltaY * 0.005));
+        updateCameraTarget();
+      }, { passive: true });
+
+      // 點擊 3D 畫作開啟 Modal 彈窗
+      window.addEventListener('click', (e) => {
+        if (e.target.closest('button') || e.target.closest('#artwork-modal') || e.target.closest('select')) return;
+
+        mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(interactiveObjects);
+
+        if (intersects.length > 0) {
+          const artData = intersects[0].object.userData;
+          openModal(artData);
+        }
+      });
+
+      // Modal 關閉事件
+      document.getElementById('close-modal-btn').addEventListener('click', closeModal);
+      document.getElementById('artwork-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'artwork-modal') closeModal();
+      });
+    }
+
+    function openModal(data) {
+      const modal = document.getElementById('artwork-modal');
+      const modalCard = document.getElementById('modal-card');
+      const langArt = i18n[currentLang].gallery[data.stationId].artworks[data.artId];
+
+      document.getElementById('modal-img').src = data.url;
+      document.getElementById('modal-theme').innerHTML = `<i class="fa-solid fa-layer-group"></i> ${i18n[currentLang].modalThemeLabel}`;
+      document.getElementById('modal-title').innerText = langArt.title;
+      document.getElementById('modal-desc').innerText = langArt.desc;
+
+      modal.classList.remove('pointer-events-none');
+      modal.classList.remove('opacity-0');
+      modalCard.classList.remove('scale-95');
+      modalCard.classList.add('scale-100');
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('artwork-modal');
+      const modalCard = document.getElementById('modal-card');
+
+      modal.classList.add('opacity-0');
+      modalCard.classList.remove('scale-100');
+      modalCard.classList.add('scale-95');
+
+      setTimeout(() => {
+        modal.classList.add('pointer-events-none');
+      }, 300);
+    }
+
+    function onWindowResize() {
+      const aspect = window.innerWidth / window.innerHeight;
+      const isMobile = aspect < 1.0 || window.innerWidth < 768;
+      
+      camera.aspect = aspect;
+      camera.fov = isMobile ? 88 : 55;
+      camera.updateProjectionMatrix();
+      
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      camera.position.lerp(targetCameraPos, 0.06);
+      currentLookAt.lerp(targetLookAt, 0.06);
+      camera.lookAt(currentLookAt);
+
+      // 中央透明鑽石自轉與浮動
+      const centerCrystal = scene.getObjectByName("centerCrystal");
+      if (centerCrystal) {
+        centerCrystal.rotation.y += 0.008;
+        centerCrystal.rotation.x += 0.003;
+        centerCrystal.position.y = 1.6 + Math.sin(Date.now() * 0.0015) * 0.12;
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function () {
+      initScene();
+    };
+  </script>
+</body>
+</html>
